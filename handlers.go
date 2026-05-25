@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"os/exec"
 
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
@@ -12,40 +13,23 @@ import (
 )
 
 func handleGitStatus(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	repoPath := request.GetString("repo_path", "")
-	if repoPath == "" {
-		return mcp.NewToolResultError("repo_path is required"), nil
-	}
+    repoPath := request.GetString("repo_path", "")
+    if repoPath == "" {
+        return mcp.NewToolResultError("repo_path is required"), nil
+    }
 
-	repo, err := git.PlainOpen(repoPath)
-	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("failed to open repository: %v", err)), nil
-	}
+    cmd := exec.Command("git", "-C", repoPath, "status", "--porcelain")
+    out, err := cmd.CombinedOutput()
+    if err != nil {
+        return mcp.NewToolResultError(fmt.Sprintf("git status failed: %v\n%s", err, string(out))), nil
+    }
 
-	worktree, err := repo.Worktree()
-	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("failed to get worktree: %v", err)), nil
-	}
+    output := strings.TrimSpace(string(out))
+    if output == "" {
+        return mcp.NewToolResultText("Working tree clean"), nil
+    }
 
-	status, err := worktree.Status()
-	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("failed to get status: %v", err)), nil
-	}
-
-	if status.IsClean() {
-		return mcp.NewToolResultText("Working tree clean"), nil
-	}
-
-	var sb strings.Builder
-	for path, fileStatus := range status {
-		sb.WriteString(fmt.Sprintf("%c%c %s\n",
-			fileStatus.Staging,
-			fileStatus.Worktree,
-			path,
-		))
-	}
-
-	return mcp.NewToolResultText(sb.String()), nil
+    return mcp.NewToolResultText(output), nil
 }
 
 func handleGitDiffUnstaged(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -229,6 +213,26 @@ func handleGitAdd(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallTo
 	}
 
 	return mcp.NewToolResultText(fmt.Sprintf("Staged files: %s", strings.Join(staged, ", "))), nil
+}
+
+func handleGitRestore(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+    repoPath := request.GetString("repo_path", "")
+    if repoPath == "" {
+        return mcp.NewToolResultError("repo_path is required"), nil
+    }
+
+    file := request.GetString("file", "")
+    if file == "" {
+        return mcp.NewToolResultError("file is required"), nil
+    }
+
+    cmd := exec.Command("git", "-C", repoPath, "checkout", "--", file)
+    out, err := cmd.CombinedOutput()
+    if err != nil {
+        return mcp.NewToolResultError(fmt.Sprintf("git checkout failed: %v\n%s", err, string(out))), nil
+    }
+
+    return mcp.NewToolResultText(fmt.Sprintf("Restored file: %s", file)), nil
 }
 
 func handleGitReset(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {

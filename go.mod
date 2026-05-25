@@ -1,6 +1,6 @@
 module github.com/tosolveit/mcp-server-git
 
-go 1.26
+go 1.25
 
 require (
 	github.com/go-git/go-git/v5 v5.17.0

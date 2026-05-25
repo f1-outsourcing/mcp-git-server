@@ -74,6 +74,19 @@ func registerTools(s *server.MCPServer) {
 		),
 	), handleGitAdd)
 
+	// git_restore - Restore a file in the working directory to HEAD
+	s.AddTool(mcp.NewTool("git_restore",
+		mcp.WithDescription("Restores a file in the working directory to the version in HEAD"),
+		mcp.WithString("repo_path",
+			mcp.Required(),
+			mcp.Description("Path to Git repository"),
+		),
+		mcp.WithString("file",
+			mcp.Required(),
+			mcp.Description("Path of the file to restore"),
+		),
+	), handleGitRestore)
+
 	// git_reset - Unstage all changes
 	s.AddTool(mcp.NewTool("git_reset",
 		mcp.WithDescription("Unstages all staged changes"),
