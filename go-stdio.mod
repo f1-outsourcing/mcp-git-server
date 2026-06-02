@@ -1,4 +1,4 @@
-module github.com/tosolveit/mcp-server-git
+module github.com/tosolveit/mcp-git-stdio
 
 go 1.25.10
 
