@@ -1,32 +1,7 @@
-# Binaries
-mcp-server-git
-*.exe
-*.exe~
-*.dll
-*.so
-*.dylib
 
-# Test binary
-*.test
+#ide
+.continue/
 
-# Output of go coverage
-*.out
-
-# Dependency directories
-vendor/
-
-# Go workspace file
-go.work
-
-# IDE
-.idea/
-.vscode/
-*.swp
-*.swo
-
-# OS
-.DS_Store
-Thumbs.db
-
-# GoReleaser
-dist/
+# git
+.git/
+.gitignore
