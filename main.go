@@ -19,7 +19,7 @@ func main() {
 	flag.Parse()
 
 	if showVersion {
-		fmt.Printf("mcp-git-stdio %s\n", version)
+		fmt.Printf("mcp-git-server %s\n", version)
 		return
 	}
 
