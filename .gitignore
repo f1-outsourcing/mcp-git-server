@@ -1,7 +1,8 @@
-
-#ide
 .continue/
 
-# git
-.git/
 .gitignore
+.github/
+.git/
+
+bin/
+
