@@ -1,8 +1,35 @@
+# ignore the .continue
 .continue/
+.ai
 
-.gitignore
-.github/
+# Ignore IDE files
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# git
 .git/
+.github/
+.gitignore
 
+# ignore all log files
+*.log
+
+# ignore backup files
+*.bak
+*.old
+
+# ignore media
+video/
+
+# Ignore Composer files
+vendor/
+composer.lock
+
+# ignore WordPress core files
+wp-config.php
+
+# ignore java files
+target/
 bin/
-

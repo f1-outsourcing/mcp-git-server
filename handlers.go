@@ -108,8 +108,29 @@ func handleGitDiff(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallT
 	if repoPath == "" {
 		return mcp.NewToolResultError("repo_path is required"), nil
 	}
-	if target == "" {
-		return mcp.NewToolResultError("target is required"), nil
+
+	// If no target or target is HEAD, run regular git diff to show working tree changes
+	if target == "" || target == "HEAD" {
+		cmd := exec.Command("git", "-C", repoPath, "diff")
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			// git diff returns exit code 1 when there are differences, which is normal
+			if len(out) > 0 {
+				output := strings.TrimSpace(string(out))
+				if output == "" {
+					return mcp.NewToolResultText("No differences"), nil
+				}
+				return mcp.NewToolResultText(output), nil
+			}
+			return mcp.NewToolResultError(fmt.Sprintf("git diff failed: %v", err)), nil
+		}
+
+		output := strings.TrimSpace(string(out))
+		if output == "" {
+			return mcp.NewToolResultText("No differences"), nil
+		}
+
+		return mcp.NewToolResultText(output), nil
 	}
 
 	repo, err := git.PlainOpen(repoPath)
