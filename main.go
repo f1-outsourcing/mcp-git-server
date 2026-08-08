@@ -23,6 +23,9 @@ func main() {
 		return
 	}
 
+	// Initialize git configuration on startup
+	initGitConfig()
+
 	mcpServer := NewServer()
 
 	if err := server.ServeStdio(mcpServer); err != nil {
