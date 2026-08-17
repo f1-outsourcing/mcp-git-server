@@ -34,23 +34,29 @@ func initGitConfig() {
 
 	log.Println("Initializing git configuration...")
 
-	// 1. Apply global config settings
+	// 1. Apply global config settings (including safe.directory *)
 	applyGlobalGitConfig()
 
-	// 2. Find and configure existing git repos
+	// 2. Find and configure existing git repos across the whole filesystem root.
 	applyRepoGitConfig()
 
 	log.Println("Git configuration initialized successfully.")
 }
 
 // applyGlobalGitConfig sets the required global git config values.
+//
+// We use `safe.directory *` (the documented "wildcard" form) so that any
+// repository on this machine is considered safe, regardless of which user
+// created it.  This is the robust fix for the "dubious ownership" error
+// that used to appear for repos like /php8-phalcon5.6.1.
 func applyGlobalGitConfig() {
-	// Add safe.directory for /mcp-git-server (and all subdirectories via *)
-	cmd := exec.Command("git", "config", "--global", "--add", "safe.directory", "/mcp-git-server")
+	// Add safe.directory wildcard. `--replace-all` lets us overwrite any
+	// pre-existing entries so we don't accumulate duplicates on restart.
+	cmd := exec.Command("git", "config", "--global", "--replace-all", "safe.directory", "*")
 	if output, err := cmd.CombinedOutput(); err != nil {
-		log.Printf("Warning: failed to add safe.directory: %v\n%s", err, string(output))
+		log.Printf("Warning: failed to set safe.directory=*: %v\n%s", err, string(output))
 	} else {
-		log.Println("Added /mcp-git-server to safe.directory")
+		log.Println("Set safe.directory=* in global config")
 	}
 
 	// Check and apply each global config setting
@@ -71,12 +77,7 @@ func ensureGlobalConfig(key, value string) error {
 		return setGlobalConfig(key, value)
 	}
 
-	currentValue := string(output)
-	// Trim newline
-	for len(currentValue) > 0 && (currentValue[len(currentValue)-1] == '\n' || currentValue[len(currentValue)-1] == '\r') {
-		currentValue = currentValue[:len(currentValue)-1]
-	}
-
+	currentValue := trimOutput(output)
 	if currentValue == value {
 		log.Printf("Global config %s is already set to %s", key, value)
 		return nil
@@ -97,39 +98,74 @@ func setGlobalConfig(key, value string) error {
 	return nil
 }
 
-// applyRepoGitConfig finds all .git directories under /mcp-git-server and applies repo-level configs.
-func applyRepoGitConfig() {
-	rootDir := "/mcp-git-server"
+// ensureRepoSafe makes sure the given repository is considered "safe" by git
+// (i.e., no "dubious ownership" error) before we run any git command against
+// it.  We rely on the `safe.directory *` wildcard, but in case it is not in
+// effect yet (e.g., HOME is unwritable), we fall back to adding the specific
+// path.  Idempotent and cheap.
+func ensureRepoSafe(repoPath string) {
+	if repoPath == "" {
+		return
+	}
+	// Best effort: if the wildcard is not already set, add the specific path.
+	cmd := exec.Command("git", "config", "--global", "get-all", "safe.directory")
+	out, _ := cmd.CombinedOutput()
+	alreadyWild := false
+	for _, line := range strings.Split(string(out), "\n") {
+		if strings.TrimSpace(line) == "*" {
+			alreadyWild = true
+			break
+		}
+	}
+	if alreadyWild {
+		return
+	}
+	add := exec.Command("git", "config", "--global", "--add", "safe.directory", repoPath)
+	if output, err := add.CombinedOutput(); err != nil {
+		log.Printf("Warning: failed to add %s to safe.directory: %v\n%s", repoPath, err, string(output))
+	}
+}
 
-	// Walk the directory tree to find .git directories (max depth 2 from root)
+// applyRepoGitConfig finds all .git directories reachable from the filesystem
+// root and applies repo-level configs.  We skip virtual filesystems and stay
+// shallow (max depth 3 from /) to keep startup fast.
+func applyRepoGitConfig() {
+	rootDir := "/"
+
+	// Virtual filesystems we must never descend into.
+	skip := map[string]bool{
+		"/proc": true,
+		"/sys":  true,
+		"/dev":  true,
+		"/run":  true,
+		"/boot": true,
+	}
+
 	err := filepath.Walk(rootDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return nil // Skip errors, continue walking
 		}
 
-		// Calculate depth relative to rootDir
 		relPath, err := filepath.Rel(rootDir, path)
 		if err != nil {
 			return nil
 		}
 
-		// Count path separators to determine depth
-		// relPath "." means depth 0 (rootDir itself)
-		// relPath "repo" means depth 1
-		// relPath "repo/.git" means depth 2
-		depth := strings.Count(relPath, string(filepath.Separator))
-
-		// Limit depth to 2 (i.e., rootDir/repo/.git)
-		if depth > 2 {
+		// Never descend into virtual filesystems.
+		if info.IsDir() && skip[path] {
 			return filepath.SkipDir
 		}
 
-		// Check if this is a .git directory
+		// Limit depth to 3 (e.g., /some/repo/.git).
+		depth := strings.Count(relPath, string(filepath.Separator))
+		if depth > 3 {
+			return filepath.SkipDir
+		}
+
 		if info.IsDir() && info.Name() == ".git" {
 			repoPath := filepath.Dir(path)
 			configureRepo(repoPath)
-			// Skip contents of .git directory
-			return filepath.SkipDir
+			return filepath.SkipDir // do not descend into .git
 		}
 
 		return nil
@@ -144,11 +180,8 @@ func applyRepoGitConfig() {
 func configureRepo(repoPath string) {
 	log.Printf("Configuring repo: %s", repoPath)
 
-	// Add to safe.directory
-	cmd := exec.Command("git", "config", "--global", "--add", "safe.directory", repoPath)
-	if output, err := cmd.CombinedOutput(); err != nil {
-		log.Printf("Warning: failed to add %s to safe.directory: %v\n%s", repoPath, err, string(output))
-	}
+	// Make sure this repo is safe (defense in depth; wildcard should already cover it).
+	ensureRepoSafe(repoPath)
 
 	// Apply repo-level configs
 	for key, value := range requiredRepoConfigs {
@@ -168,12 +201,7 @@ func ensureRepoConfig(repoPath, key, value string) error {
 		return setRepoConfig(repoPath, key, value)
 	}
 
-	currentValue := string(output)
-	// Trim newline
-	for len(currentValue) > 0 && (currentValue[len(currentValue)-1] == '\n' || currentValue[len(currentValue)-1] == '\r') {
-		currentValue = currentValue[:len(currentValue)-1]
-	}
-
+	currentValue := trimOutput(output)
 	if currentValue == value {
 		log.Printf("Repo config %s is already set to %s in %s", key, value, repoPath)
 		return nil
@@ -192,4 +220,13 @@ func setRepoConfig(repoPath, key, value string) error {
 	}
 	log.Printf("Set repo config %s=%s in %s", key, value, repoPath)
 	return nil
+}
+
+// trimOutput trims trailing newlines/carriage returns from command output.
+func trimOutput(b []byte) string {
+	s := string(b)
+	for len(s) > 0 && (s[len(s)-1] == '\n' || s[len(s)-1] == '\r') {
+		s = s[:len(s)-1]
+	}
+	return s
 }

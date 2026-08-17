@@ -18,6 +18,9 @@ func handleGitStatus(ctx context.Context, request mcp.CallToolRequest) (*mcp.Cal
         return mcp.NewToolResultError("repo_path is required"), nil
     }
 
+    // Defensive: make sure git does not refuse this repo due to ownership.
+    ensureRepoSafe(repoPath)
+
     cmd := exec.Command("git", "-C", repoPath, "status", "--porcelain")
     out, err := cmd.CombinedOutput()
     if err != nil {
@@ -111,6 +114,7 @@ func handleGitDiff(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallT
 
 	// If no target or target is HEAD, run regular git diff to show working tree changes
 	if target == "" || target == "HEAD" {
+		ensureRepoSafe(repoPath)
 		cmd := exec.Command("git", "-C", repoPath, "diff")
 		out, err := cmd.CombinedOutput()
 		if err != nil {
@@ -246,6 +250,9 @@ func handleGitRestore(ctx context.Context, request mcp.CallToolRequest) (*mcp.Ca
     if file == "" {
         return mcp.NewToolResultError("file is required"), nil
     }
+
+    // Defensive: make sure git does not refuse this repo due to ownership.
+    ensureRepoSafe(repoPath)
 
     cmd := exec.Command("git", "-C", repoPath, "checkout", "--", file)
     out, err := cmd.CombinedOutput()
