@@ -539,3 +539,36 @@ func handleGitBranch(ctx context.Context, request mcp.CallToolRequest) (*mcp.Cal
 
 	return mcp.NewToolResultText(strings.Join(branches, "\n")), nil
 }
+
+func handleGitCatFile(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	repoPath := request.GetString("repo_path", "")
+	branchName := request.GetString("branch_name", "")
+	file := request.GetString("file", "")
+
+	if repoPath == "" {
+		return mcp.NewToolResultError("repo_path is required"), nil
+	}
+	if branchName == "" {
+		return mcp.NewToolResultError("branch_name is required"), nil
+	}
+	if file == "" {
+		return mcp.NewToolResultError("file is required"), nil
+	}
+
+	// Defensive: make sure git does not refuse this repo due to ownership.
+	ensureRepoSafe(repoPath)
+
+	// git cat-file -e checks for existence of the object.
+	// The revision prefix "origin/<branch>" selects the remote-tracking branch.
+	// e.g. git cat-file -e origin/feature/control_interface-clean:path/to/file
+	cmd := exec.Command("git", "-C", repoPath, "cat-file", "-e", fmt.Sprintf("origin/%s:%s", branchName, file))
+	out, err := cmd.CombinedOutput()
+
+	if err != nil {
+		// If the object does not exist, git cat-file -e returns a non-zero exit
+		// code with a message like "fatal: path ... does not exist in ...".
+		return mcp.NewToolResultText(fmt.Sprintf("File does not exist in branch %s: %s\n%s", branchName, file, strings.TrimSpace(string(out)))), nil
+	}
+
+	return mcp.NewToolResultText(fmt.Sprintf("File exists in branch %s: %s", branchName, file)), nil
+}

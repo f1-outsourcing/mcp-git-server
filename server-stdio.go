@@ -171,4 +171,21 @@ func registerTools(s *server.MCPServer) {
 			mcp.Description("Path to Git repository"),
 		),
 	), handleGitBranch)
+
+	// git_cat_file - Check if a file exists in a branch
+	s.AddTool(mcp.NewTool("git_cat_file",
+		mcp.WithDescription("Checks whether a file exists in the given branch (using git cat-file -e against origin/<branch>)"),
+		mcp.WithString("repo_path",
+			mcp.Required(),
+			mcp.Description("Path to Git repository"),
+		),
+		mcp.WithString("branch_name",
+			mcp.Required(),
+			mcp.Description("Branch name to check (e.g. feature/control_interface-clean). The branch is resolved as origin/<branch_name>."),
+		),
+		mcp.WithString("file",
+			mcp.Required(),
+			mcp.Description("Path to the file within the repository to check for existence"),
+		),
+	), handleGitCatFile)
 }
