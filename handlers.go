@@ -21,7 +21,9 @@ func handleGitStatus(ctx context.Context, request mcp.CallToolRequest) (*mcp.Cal
     // Defensive: make sure git does not refuse this repo due to ownership.
     ensureRepoSafe(repoPath)
 
-    cmd := exec.Command("git", "-C", repoPath, "status", "--porcelain")
+    gitArgs := []string{"-C", repoPath, "status", "--porcelain", "--", "."}
+    gitArgs = append(gitArgs, excludePathspecs(excludeDirs)...)
+    cmd := exec.Command("git", gitArgs...)
     out, err := cmd.CombinedOutput()
     if err != nil {
         return mcp.NewToolResultError(fmt.Sprintf("git status failed: %v\n%s", err, string(out))), nil
@@ -58,6 +60,9 @@ func handleGitDiffUnstaged(ctx context.Context, request mcp.CallToolRequest) (*m
 
 	var changes []string
 	for path, fileStatus := range status {
+		if isExcluded(path, excludeDirs) {
+			continue
+		}
 		if fileStatus.Worktree != git.Unmodified && fileStatus.Worktree != ' ' {
 			changes = append(changes, fmt.Sprintf("%c %s", fileStatus.Worktree, path))
 		}
@@ -93,6 +98,9 @@ func handleGitDiffStaged(ctx context.Context, request mcp.CallToolRequest) (*mcp
 
 	var changes []string
 	for path, fileStatus := range status {
+		if isExcluded(path, excludeDirs) {
+			continue
+		}
 		if fileStatus.Staging != git.Unmodified && fileStatus.Staging != ' ' {
 			changes = append(changes, fmt.Sprintf("%c %s", fileStatus.Staging, path))
 		}
@@ -115,7 +123,9 @@ func handleGitDiff(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallT
 	// If no target or target is HEAD, run regular git diff to show working tree changes
 	if target == "" || target == "HEAD" {
 		ensureRepoSafe(repoPath)
-		cmd := exec.Command("git", "-C", repoPath, "diff")
+		gitArgs := []string{"-C", repoPath, "diff", "--", "."}
+		gitArgs = append(gitArgs, excludePathspecs(excludeDirs)...)
+		cmd := exec.Command("git", gitArgs...)
 		out, err := cmd.CombinedOutput()
 		if err != nil {
 			// git diff returns exit code 1 when there are differences, which is normal
